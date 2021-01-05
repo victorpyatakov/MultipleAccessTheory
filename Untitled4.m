@@ -1,0 +1,142 @@
+close all;
+clear all;
+clc;
+%% входные данные
+T=10000;% количесвто окон
+M=2;% количество абонентов
+P_send=1/M;% вероятность передачи
+lymda_init=0;
+lymda_inc=1;% интенсивность входного потока
+lymda_end=50;
+B=1;% длина очереди
+%% массивы для графиков
+outLymda=zeros(1,length(lymda_init:lymda_inc:lymda_end));
+meanQueu=zeros(1,length(lymda_init:lymda_inc:lymda_end));
+meanZaderjka=zeros(1,length(lymda_init:lymda_inc:lymda_end));
+N_teor1=zeros(1,length(lymda_init:lymda_inc:lymda_end));
+N_teor=zeros(1,length(lymda_init:lymda_inc:lymda_end));
+delay_teor=zeros(1,length(lymda_init:lymda_inc:lymda_end));
+%% моделирование
+count=1;
+for lymda=lymda_init:lymda_inc:lymda_end
+    
+    disp(lymda);
+    P  = create_P( M,lymda,P_send );
+    C=P'-eye(M+1,M+1);
+C(M+1,:)=1;
+X=zeros(1,M+1);
+X(M+1)=1;
+Answ=X/C';
+
+for i=0:1:M
+    N_teor(1,count)=N_teor(1,count)+Answ(i+1)*i; %теоретическое среднее число заявок
+end
+    
+
+    Zayavki=poissrnd(lymda/M,M,T);% формирую поток заявок по окнам
+  
+    queue=zeros(M,B); %очередь
+sr_buffer=zeros(M,T);% среднее числов в буфере
+Delay=zeros(M,1);% Задержка
+ Otpravka=zeros(M,1);% сколько ушло у абонента
+When_sms_come=zeros(M,1);%когда пришло сообщение
+
+    for t=1:T
+          
+       
+    sr_buffer(:,t)=queue;
+%% смотрим заявки у абонентов и если есть кладем в очередь
+         
+        queue=queue+Zayavki(:,t);% смотрим есть ли заявки и кладем в буфер
+        queue(queue>B)=1;% подумать, если буфер больше 1
+        
+      
+%% если она появилась записываем время
+        if sum(queue)~=0 && sum(Zayavki(:,t))~=0
+          
+            for i=1:M
+              
+                if  When_sms_come(i)==0 && queue(i)~=0                  
+                   
+                      When_sms_come(i)=t;  % записываем время прибытия заявки
+                    
+                end
+               
+            end
+           
+        end
+        
+%% есть те кто готов передать
+        if sum(queue)~=0
+            
+          send_mes=zeros(M,1);
+          
+            for Abon=1:M
+                
+                p=rand;
+
+                 if p<P_send % если случ величина больше вер передачи, то можно передавать
+                     
+                     if queue(Abon,1)~=0 &&  When_sms_come( Abon,1)<t
+                         
+                         send_mes(Abon,1)=1;%какого абонента есть для передачи
+                    
+                     end
+
+                end
+            end
+        
+        end
+        
+%% передача
+        if sum(queue)~=0
+            
+            if sum(send_mes)==1
+                [maxel,ind]=max(send_mes); 
+                
+                if When_sms_come(ind,1)<t
+                   
+                    Delay(ind,1)=Delay(ind,1)+(t-When_sms_come(ind,1));%почситали задержку
+                    Otpravka(ind,1)=Otpravka(ind,1)+1;%сколько вышло
+                    queue(ind,1)=queue(ind,1)-1;%очистили буфер( если буфер не 1)
+                    When_sms_come(ind,1)=0;%обнулили когда пришла
+                    
+                end
+
+            end
+        end
+              
+              
+%    sr_buffer(:,t)=queue;
+    end
+    
+outLymda(1,count)=(sum(Otpravka))/T;     % выходная интенсивность 
+meanQueu(1,count)=(sum(sum(sr_buffer)))/T; % среднее число абонентов
+meanZaderjka(1,count)=(sum(Delay))/(sum(Otpravka)); % средняя задержка
+delay_teor(1,count)=N_teor(1,count)/ outLymda(1,count); % средняя задержка теория
+
+count=count+1;
+    
+end
+%% вывод графиков
+ figure(1)
+plot(lymda_init:lymda_inc:lymda_end,meanQueu);
+grid on
+ hx = xlabel('входная интенстивность ');
+ set(hx, 'FontName', 'Arial Cyr', 'FontSize', 11)
+ hy = ylabel('среднее число заявок');
+ set(hy, 'FontName', 'Arial Cyr', 'FontSize', 11)
+ hold on;
+plot(lymda_init:lymda_inc:lymda_end,N_teor,'r<');
+
+ 
+  figure(2)
+plot(lymda_init:lymda_inc:lymda_end,(meanZaderjka));
+grid on
+ hx = xlabel('входная интенстивность ');
+ set(hx, 'FontName', 'Arial Cyr', 'FontSize', 11)
+ hy = ylabel('среднее задержка');
+ set(hy, 'FontName', 'Arial Cyr', 'FontSize', 11)
+hold on;
+ plot(lymda_init:lymda_inc:lymda_end,delay_teor,'r>');
+
